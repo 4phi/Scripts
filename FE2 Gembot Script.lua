@@ -6,21 +6,17 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
 
-
 local addMapEventRemote = RemoteFolder:FindFirstChild("AddMapEvent")
 local BoostIntensity = RemoteFolder:FindFirstChild("BoostIntensity")
 local ReqTele = RemoteFolder:FindFirstChild("ReqTele")
 local AddedWaiting = RemoteFolder:FindFirstChild("AddedWaiting")
 local RemoveWaiting = RemoteFolder:FindFirstChild("RemoveWaiting")
 
-
 local NewMapVote = RemoteFolder:FindFirstChild("NewMapVote") or RemoteFolder:WaitForChild("NewMapVote", 10)
 local UpdMapVote = RemoteFolder:FindFirstChild("UpdMapVote") or RemoteFolder:WaitForChild("UpdMapVote", 10)
 
-
 local CLMAIN = LocalPlayer.PlayerScripts:WaitForChild("CL_MAIN_GameScript", 10)
 local DoMapVoteRemote = CLMAIN and (CLMAIN:FindFirstChild("DoMapVote") or CLMAIN:WaitForChild("DoMapVote", 10))
-
 
 local function GetIsVotingEvent()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -30,13 +26,11 @@ local function GetIsVotingEvent()
     return clWaiting and clWaiting:FindFirstChild("IsVoting")
 end
 
-
 local SAFE_ROOM_CFRAME = CFrame.new(-100.5, -222.95, -36.5)
 local PLACE_IDS = {
     Pro = 1273079594,
     Normal = 738339342
 }
-
 
 local UI_State = {
     AutoBoost = false,
@@ -45,23 +39,17 @@ local UI_State = {
     AutoFullVote = false,
     CustomVoteTarget = 4,
     AutoTeleport = false,
-    
-
     AutoReqTele = false,
     TargetUsername = "",
     TargetUserId = nil,
     SelectedPlaceType = "Pro"
 }
 
-
 local function CalculateCoinCost(voteCount)
     if voteCount <= 1 then return 0 end
     
     local totalCost = 0
-    
-
     for voteIndex = 2, voteCount do
-
         local extraCost = math.clamp((voteIndex - 1) * 10, 10, 50)
         totalCost = totalCost + extraCost
     end
@@ -69,23 +57,19 @@ local function CalculateCoinCost(voteCount)
     return totalCost
 end
 
-
-if getgenv().TomatoConnections then
-    for _, connection in pairs(getgenv().TomatoConnections) do
+if getgenv().pConnections then
+    for _, connection in pairs(getgenv().pConnections) do
         if connection then
             pcall(function() connection:Disconnect() end)
         end
     end
 end
-getgenv().TomatoConnections = {}
+getgenv().pConnections = {}
 
 local function TrackConnection(connection)
-    table.insert(getgenv().TomatoConnections, connection)
+    table.insert(getgenv().pConnections, connection)
     return connection
 end
-
-
-
 
 local Colors = {
     System  = Color3.fromRGB(200, 200, 200),
@@ -110,17 +94,12 @@ local function Alert(Text, ColorType)
     print("[ROKFX] " .. Output)
 end
 
-
-
-
 local fullVoteInProgress = false
-
 
 local function castInstantFullVote(targetMap, startingVoteIndex)
     if not targetMap or not DoMapVoteRemote then return end
     local maxAllowedVotes = UI_State.CustomVoteTarget or 4
     local startIndex = (startingVoteIndex or 1) + 1
-
 
     for voteIndex = startIndex, maxAllowedVotes do
         local extraCost = math.clamp((voteIndex - 1) * 10, 10, 50)
@@ -130,11 +109,8 @@ local function castInstantFullVote(targetMap, startingVoteIndex)
     Alert(string.format("Vote Burst: Fired %d Extra Votes on %s!", (maxAllowedVotes - startIndex + 1), targetMap.name or "Map"), "Success")
 end
 
-
 local function triggerAutoFullVote(voteData)
     if not UI_State.AutoFullVote or not voteData or not voteData.pVotes then return end
-
-
     if fullVoteInProgress then return end
 
     local userIdStr = tostring(LocalPlayer.UserId)
@@ -160,20 +136,15 @@ local function triggerAutoFullVote(voteData)
 
     if not targetMap then return end
 
-
     fullVoteInProgress = true
-
-
     castInstantFullVote(targetMap, currentVotes)
 end
-
 
 if NewMapVote then
     TrackConnection(NewMapVote.OnClientEvent:Connect(function()
         fullVoteInProgress = false
     end))
 end
-
 
 if UpdMapVote then
     TrackConnection(UpdMapVote.OnClientEvent:Connect(function(voteData)
@@ -182,9 +153,6 @@ if UpdMapVote then
         end
     end))
 end
-
-
-
 
 local function TeleportToSecretRoom(character)
     if not UI_State.AutoTeleport then return end
@@ -203,11 +171,6 @@ end))
 if LocalPlayer.Character then
     task.spawn(TeleportToSecretRoom, LocalPlayer.Character)
 end
-
-
-
-
-
 
 local eventTriggeredThisRound = false
 local votingActiveThisRound = false
@@ -229,7 +192,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                     end
                 end
 
-
                 if UI_State.AutoVoting and not votingActiveThisRound then
                     votingActiveThisRound = true
                     
@@ -239,9 +201,7 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
                         if not root or not char then return end
                         
-
                         local savedCFrame = root.CFrame
-
 
                         local function RestorePosition()
                             char:PivotTo(savedCFrame)
@@ -256,7 +216,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                             end
                         end
 
-
                         local teleportConn
                         local hasRestored = false
                         
@@ -269,10 +228,8 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                             end
                         end)
 
-
                         if AddedWaiting then AddedWaiting:FireServer() end
                         if RemoveWaiting then RemoveWaiting:FireServer() end
-
 
                         task.delay(1.5, function()
                             if teleportConn then
@@ -283,7 +240,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                             end
                         end)
 
-
                         local isVotingEvent = GetIsVotingEvent()
                         if isVotingEvent then
                             isVotingEvent:Fire(true)
@@ -291,7 +247,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                     end)
                 end
             else
-
                 eventTriggeredThisRound = false
                 fullVoteInProgress = false
                 
@@ -309,7 +264,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
     end
 end))
 
-
 local Multiplayer = workspace:WaitForChild("Multiplayer")
 TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
     NewMap:GetPropertyChangedSignal("Name"):Wait()
@@ -322,7 +276,6 @@ TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
         end
     end
 end))
-
 
 local function DismissTeleportPrompt()
     pcall(function()
@@ -345,7 +298,6 @@ local function DismissTeleportPrompt()
     end)
 end
 
-
 task.spawn(function()
     while true do
         if UI_State.AutoReqTele and ReqTele and UI_State.TargetUserId then
@@ -362,7 +314,6 @@ task.spawn(function()
         end
     end
 end)
-
 
 local function UpdateTargetUserId(username)
     if username == "" or username == nil then
@@ -389,38 +340,25 @@ local function UpdateTargetUserId(username)
     end)
 end
 
-
-
-
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/4phi/Kavo-UI-Library/refs/heads/main/source.lua"))()
 local Window = Library.CreateLib("FE2 Gembot Utility", "GrapeTheme")
-
 
 local MainTab = Window:NewTab("Main")
 local AutomationTab = Window:NewTab("Automation")
 local CreditsTab = Window:NewTab("Credits")
 
-
 local BoostSection = MainTab:NewSection("Boosts & Events")
 local TeleportSection = MainTab:NewSection("Teleports")
-
 
 local VotingSection = AutomationTab:NewSection("Voting")
 local VoteAutomatorSection = AutomationTab:NewSection("Vote Automator")
 local AutoJoinSection = AutomationTab:NewSection("Auto-Join")
 
-
 local CreditsSection = CreditsTab:NewSection("Credits")
-
-
-
-
-
 
 BoostSection:NewToggle("Auto Boost (20 Gems)", "Automatically sends full boosts at round start", function(state)
     UI_State.AutoBoost = state
 end)
-
 
 BoostSection:NewButton("Manual Full Boost (20 Gems)", "Sends one-time manual boost requests", function()
     if BoostIntensity then
@@ -432,11 +370,9 @@ BoostSection:NewButton("Manual Full Boost (20 Gems)", "Sends one-time manual boo
     end
 end)
 
-
 BoostSection:NewToggle("Auto Double Map Event (15 Gems)", "Automatically adds two events during voting", function(state)
     UI_State.AutoEvent = state
 end)
-
 
 BoostSection:NewButton("Manual Double Map Event (15 Gems)", "Instantly adds 2 events", function()
     if addMapEventRemote then
@@ -444,7 +380,6 @@ BoostSection:NewButton("Manual Double Map Event (15 Gems)", "Instantly adds 2 ev
         addMapEventRemote:FireServer()
     end
 end)
-
 
 TeleportSection:NewToggle("Auto TP to Secret Room", "Automatically teleports character upon spawn or load", function(state)
     UI_State.AutoTeleport = state
@@ -461,11 +396,6 @@ TeleportSection:NewButton("Manual TP to Secret Room", "Teleports to safe area on
     end
 end)
 
-
-
-
-
-
 VotingSection:NewToggle("Auto Open Voting", "Opens voting remotely", function(state)
     UI_State.AutoVoting = state
     if state then
@@ -479,13 +409,7 @@ VotingSection:NewToggle("Auto Open Voting", "Opens voting remotely", function(st
     end
 end)
 
-
-
-
-
-
 local CoinCostLabel = VoteAutomatorSection:NewLabel("Estimated Coin Cost: " .. tostring(CalculateCoinCost(UI_State.CustomVoteTarget)) .. " Coins (" .. tostring(UI_State.CustomVoteTarget) .. " votes)")
-
 
 VoteAutomatorSection:NewTextBox("Target Vote Amount", "Enter desired vote count", function(text)
     local num = tonumber(text)
@@ -502,7 +426,6 @@ VoteAutomatorSection:NewTextBox("Target Vote Amount", "Enter desired vote count"
     end
 end)
 
-
 VoteAutomatorSection:NewToggle("Custom Vote Amount", "Auto votes target vote amount", function(state)
     UI_State.AutoFullVote = state
     if state then
@@ -512,21 +435,14 @@ VoteAutomatorSection:NewToggle("Custom Vote Amount", "Auto votes target vote amo
     end
 end)
 
-
-
-
-
-
 AutoJoinSection:NewTextBox("Target Username", "Enter target player username and press Enter", function(text)
     UpdateTargetUserId(text)
 end)
-
 
 AutoJoinSection:NewDropdown("Server Type", "Select Pro or Normal servers (Default = Pro)", {"Pro", "Normal"}, function(selected)
     UI_State.SelectedPlaceType = selected
     Alert("Server type set to: " .. selected, "Info")
 end)
-
 
 AutoJoinSection:NewToggle("Auto Teleport Request", "Fires teleport request on a four second loop", function(state)
     UI_State.AutoReqTele = state
@@ -540,9 +456,6 @@ AutoJoinSection:NewToggle("Auto Teleport Request", "Fires teleport request on a 
         Alert("Auto Teleport Request Disabled.", "Info")
     end
 end)
-
-
-
 
 local CREATOR_TAG = "rokfx on discord"
 local GITHUB_LINK = "https://github.com/4phi"

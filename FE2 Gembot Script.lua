@@ -167,12 +167,15 @@ local fullVoteInProgress = false
 local function castInstantFullVote(targetMap, startingVoteIndex)
     if not targetMap or not DoMapVoteRemote then return end
     local maxAllowedVotes = UI_State.CustomVoteTarget or 4
-    local startIndex = (startingVoteIndex or 1) + 1
-    for voteIndex = startIndex, maxAllowedVotes do
-        local extraCost = math.clamp((voteIndex - 1) * 10, 10, 50)
+    local currentVotes = startingVoteIndex or 1
+
+    for voteIndex = currentVotes, maxAllowedVotes - 1 do
+        local extraCost = math.clamp(voteIndex * 10, 10, 50)
         DoMapVoteRemote:Fire(targetMap.ID, extraCost)
     end
-    Alert(string.format("Vote Burst: Fired %d Extra Votes on %s!", (maxAllowedVotes - startIndex + 1), targetMap.name or "Map"), "Success")
+    
+    local votesFired = maxAllowedVotes - currentVotes
+    Alert(string.format("Vote Burst: Fired %d Extra Votes on %s!", votesFired, targetMap.name or "Map"), "Success")
 end
 local function triggerAutoFullVote(voteData)
     if not UI_State.AutoFullVote or not voteData or not voteData.pVotes then return end

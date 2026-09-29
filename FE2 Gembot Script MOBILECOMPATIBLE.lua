@@ -1,0 +1,583 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local RemoteFolder = ReplicatedStorage:WaitForChild("Remote")
+local addMapEventRemote = RemoteFolder:FindFirstChild("AddMapEvent")
+local BoostIntensity = RemoteFolder:FindFirstChild("BoostIntensity")
+local ReqTele = RemoteFolder:FindFirstChild("ReqTele")
+local AddedWaiting = RemoteFolder:FindFirstChild("AddedWaiting")
+local RemoveWaiting = RemoteFolder:FindFirstChild("RemoveWaiting")
+local NewMapVote = RemoteFolder:FindFirstChild("NewMapVote") or RemoteFolder:WaitForChild("NewMapVote", 10)
+local UpdMapVote = RemoteFolder:FindFirstChild("UpdMapVote") or RemoteFolder:WaitForChild("UpdMapVote", 10)
+local CLMAIN = LocalPlayer.PlayerScripts:WaitForChild("CL_MAIN_GameScript", 10)
+local DoMapVoteRemote = CLMAIN and (CLMAIN:FindFirstChild("DoMapVote") or CLMAIN:WaitForChild("DoMapVote", 10))
+local function GetIsVotingEvent()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+    local waiting = gameGui and gameGui:FindFirstChild("Waiting")
+    local clWaiting = waiting and waiting:FindFirstChild("CL_Waiting")
+    return clWaiting and clWaiting:FindFirstChild("IsVoting")
+end
+local SAFE_ROOM_CFRAME = CFrame.new(-100.5, -222.95, -36.5)
+local PLACE_IDS = {
+    Pro = 1273079594,
+    Normal = 738339342
+}
+local elevatorCamCF = CFrame.new(
+    -26.4402275, -140.635376, 121.984932,
+    -0.999347508, 0.0102566499, -0.034632545,
+    -1.86264493e-09, 0.958834708, 0.283965081,
+    0.0361194126, 0.2837798, -0.958209038
+)
+local positionCFrame = elevatorCamCF * CFrame.new(-1, 3, -5)
+local positionCFrame = positionCFrame * CFrame.Angles(0, math.rad(180), 0)
+local UI_State = {
+    AutoBoost = false,
+    AutoEvent = false,
+    AutoVoting = false,
+    AutoFullVote = false,
+    CustomVoteTarget = 4,
+    AutoTeleport = false,
+    AutoReqTele = false,
+    TargetUsername = "",
+    TargetUserId = nil,
+    SelectedPlaceType = "Pro",
+    Jorking = false
+}
+local savedJorkCFrame = nil
+local jorkTrack = nil
+local jorkThread = nil
+local jorkConnection = nil
+local function isR15(plr)
+    local char = plr.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.RigType == Enum.HumanoidRigType.R15
+end
+local function stopJorking()
+    UI_State.Jorking = false
+    if jorkConnection then
+        jorkConnection:Disconnect()
+        jorkConnection = nil
+    end
+    if jorkTrack then
+        jorkTrack:Stop()
+        jorkTrack:Destroy()
+        jorkTrack = nil
+    end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if char and root and savedjorkCFrame then
+        char:PivotTo(savedjorkCFrame)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+        end
+        savedjorkCFrame = nil
+    end
+end
+local function startJorking()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not root or not humanoid then return end
+    savedjorkCFrame = root.CFrame
+    if jorkConnection then
+        jorkConnection:Disconnect()
+    end
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    jorkConnection = RunService.Heartbeat:Connect(function()
+        if UI_State.Jorking and char and root then
+            char:PivotTo(positionCFrame)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+    jorkThread = task.spawn(function()
+        local isR15Rig = isR15(LocalPlayer)
+        while UI_State.Jorking do
+            if not jorkTrack then
+                local anim = Instance.new("Animation")
+                anim.AnimationId = not isR15Rig and "rbxassetid://72042024" or "rbxassetid://698251653"
+                jorkTrack = humanoid:LoadAnimation(anim)
+            end
+            jorkTrack:Play()
+            jorkTrack:AdjustSpeed(isR15Rig and 0.7 or 0.65)
+            jorkTrack.TimePosition = 0.6
+            task.wait(0.1)
+            while jorkTrack and jorkTrack.TimePosition < (not isR15Rig and 0.65 or 0.7) and UI_State.Jorking do
+                task.wait(0.1)
+            end
+            if jorkTrack then
+                jorkTrack:Stop()
+                jorkTrack:Destroy()
+                jorkTrack = nil
+            end
+        end
+    end)
+end
+local function CalculateCoinCost(voteCount)
+    if voteCount <= 1 then return 0 end
+    local totalCost = 0
+    for voteIndex = 2, voteCount do
+        local extraCost = math.clamp((voteIndex - 1) * 10, 10, 50)
+        totalCost = totalCost + extraCost
+    end
+    return totalCost
+end
+if getgenv().pConnections then
+    for _, connection in pairs(getgenv().pConnections) do
+        if connection then
+            pcall(function() connection:Disconnect() end)
+        end
+    end
+end
+getgenv().pConnections = {}
+local function TrackConnection(connection)
+    table.insert(getgenv().pConnections, connection)
+    return connection
+end
+local Colors = {
+    System  = Color3.fromRGB(200, 200, 200),
+    Success = Color3.fromRGB(0, 255, 127),
+    Warning = Color3.fromRGB(255, 170, 0),
+    Error   = Color3.fromRGB(255, 60, 60),
+    Info    = Color3.fromRGB(0, 220, 255)
+}
+local CLMAINenv = CLMAIN and getsenv(CLMAIN)
+local oldNewAlert = CLMAINenv and CLMAINenv.newAlert
+local function Alert(Text, ColorType)
+    local SelectedColor = Colors[ColorType] or Colors.System
+    local Output = tostring(Text)
+    if oldNewAlert then
+        pcall(function() 
+            oldNewAlert(Output, SelectedColor, nil, nil) 
+        end)
+    end
+    print("[ROKFX] " .. Output)
+end
+local fullVoteInProgress = false
+local function castInstantFullVote(targetMap, startingVoteIndex)
+    if not targetMap or not DoMapVoteRemote then return end
+    local maxAllowedVotes = UI_State.CustomVoteTarget or 4
+    local currentVotes = startingVoteIndex or 1
+
+    for voteIndex = currentVotes, maxAllowedVotes - 1 do
+        local extraCost = math.clamp(voteIndex * 10, 10, 50)
+        DoMapVoteRemote:Fire(targetMap.ID, extraCost)
+    end
+    
+    local votesFired = maxAllowedVotes - currentVotes
+    Alert(string.format("Vote Burst: Fired %d Extra Votes on %s!", votesFired, targetMap.name or "Map"), "Success")
+end
+local function triggerAutoFullVote(voteData)
+    if not UI_State.AutoFullVote or not voteData or not voteData.pVotes then return end
+    if fullVoteInProgress then return end
+    local userIdStr = tostring(LocalPlayer.UserId)
+    local playerVote = voteData.pVotes[userIdStr]
+    if not playerVote or not playerVote.mapID or not (playerVote.voteCount > 0) then return end
+    local mapID = playerVote.mapID
+    local currentVotes = playerVote.voteCount
+    local targetCap = UI_State.CustomVoteTarget or 4
+    if currentVotes >= targetCap then return end
+    local targetMap = nil
+    if voteData.mapData then
+        for _, map in ipairs(voteData.mapData) do
+            if map.ID == mapID then
+                targetMap = map
+                break
+            end
+        end
+    end
+    if not targetMap then return end
+    fullVoteInProgress = true
+    castInstantFullVote(targetMap, currentVotes)
+end
+if NewMapVote then
+    TrackConnection(NewMapVote.OnClientEvent:Connect(function()
+        fullVoteInProgress = false
+    end))
+end
+if UpdMapVote then
+    TrackConnection(UpdMapVote.OnClientEvent:Connect(function(voteData)
+        if UI_State.AutoFullVote then
+            triggerAutoFullVote(voteData)
+        end
+    end))
+end
+local function TeleportToSecretRoom(character)
+    if not UI_State.AutoTeleport then return end
+    local rootpart = character:WaitForChild("HumanoidRootPart", 10)
+    if rootpart then
+        task.wait(0.1)
+        rootpart.CFrame = SAFE_ROOM_CFRAME
+    end
+end
+TrackConnection(LocalPlayer.CharacterAdded:Connect(function(character)
+    TeleportToSecretRoom(character)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if humanoid then
+        humanoid.Died:Connect(function()
+            stopJorking()
+        end)
+    end
+end))
+if LocalPlayer.Character then
+    task.spawn(TeleportToSecretRoom, LocalPlayer.Character)
+    local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.Died:Connect(stopJorking)
+    end
+end
+local eventTriggeredThisRound = false
+local votingActiveThisRound = false
+TrackConnection(RunService.Heartbeat:Connect(function()
+    local gameInfo = workspace:FindFirstChild("GameInfo", true)
+    if gameInfo then
+        local playersLabel = gameInfo:FindFirstChild("players", true) or gameInfo:FindFirstChild("Players", true)
+        if playersLabel and playersLabel:IsA("TextLabel") then
+            if playersLabel.Text == "Waiting for Players" then
+                if UI_State.AutoEvent and not eventTriggeredThisRound then
+                    eventTriggeredThisRound = true
+                    if addMapEventRemote then
+                        addMapEventRemote:FireServer()
+                        addMapEventRemote:FireServer()
+                    end
+                end
+                if UI_State.AutoVoting and not votingActiveThisRound then
+                    votingActiveThisRound = true
+                    task.spawn(function()
+                        local char = LocalPlayer.Character
+                        local root = char and char:FindFirstChild("HumanoidRootPart")
+                        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+                        if not root or not char then return end
+                        local savedCFrame = root.CFrame
+                        local function RestorePosition()
+                            char:PivotTo(savedCFrame)
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            root.AssemblyAngularVelocity = Vector3.zero
+                            if humanoid then
+                                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+                                task.defer(function()
+                                    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                                end)
+                            end
+                        end
+                        local teleportConn
+                        local hasRestored = false
+                        teleportConn = root:GetPropertyChangedSignal("CFrame"):Connect(function()
+                            if not hasRestored then
+                                hasRestored = true
+                                if teleportConn then teleportConn:Disconnect() end
+                                task.wait(0.05)
+                                RestorePosition()
+                            end
+                        end)
+                        if AddedWaiting then AddedWaiting:FireServer() end
+                        if RemoveWaiting then RemoveWaiting:FireServer() end
+                        task.delay(1.5, function()
+                            if teleportConn then
+                                teleportConn:Disconnect()
+                            end
+                            if not hasRestored then
+                                RestorePosition()
+                            end
+                        end)
+                        local isVotingEvent = GetIsVotingEvent()
+                        if isVotingEvent then
+                            isVotingEvent:Fire(true)
+                        end
+                    end)
+                end
+            else
+                eventTriggeredThisRound = false
+                fullVoteInProgress = false
+                if votingActiveThisRound then
+                    votingActiveThisRound = false
+                    if UI_State.AutoVoting then
+                        local isVotingEvent = GetIsVotingEvent()
+                        if isVotingEvent then
+                            isVotingEvent:Fire(false)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end))
+local Multiplayer = workspace:WaitForChild("Multiplayer")
+TrackConnection(Multiplayer.ChildAdded:Connect(function(NewMap)
+    NewMap:GetPropertyChangedSignal("Name"):Wait()
+    if UI_State.AutoBoost and BoostIntensity then
+        for i = 1, 4 do
+            task.spawn(function()
+                BoostIntensity:FireServer(5)
+            end)
+        end
+    end
+end))
+local function DismissTeleportPrompt()
+    pcall(function()
+        local robloxPromptGui = CoreGui:FindFirstChild("RobloxPromptGui")
+        if robloxPromptGui then
+            local promptOverlay = robloxPromptGui:FindFirstChild("promptOverlay")
+            if promptOverlay then
+                local errorPrompt = promptOverlay:FindFirstChild("ErrorPrompt")
+                if errorPrompt and errorPrompt.Visible then
+                    local buttonContainer = errorPrompt:FindFirstChild("MessageArea") and errorPrompt.MessageArea:FindFirstChild("ErrorButtonArea")
+                    local okButton = buttonContainer and buttonContainer:FindFirstChildWhichIsA("Button", true)
+                    if okButton then
+                        for _, conn in pairs(getconnections(okButton.MouseButton1Click)) do
+                            conn:Fire()
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+task.spawn(function()
+    while true do
+        if UI_State.AutoReqTele and ReqTele and UI_State.TargetUserId then
+            DismissTeleportPrompt()
+            local placeId = PLACE_IDS[UI_State.SelectedPlaceType] or PLACE_IDS.Pro
+            pcall(function()
+                ReqTele:FireServer(placeId, UI_State.TargetUserId)
+            end)
+            task.wait(4)
+        else
+            task.wait(1)
+        end
+    end
+end)
+local function UpdateTargetUserId(username)
+    if username == "" or username == nil then
+        UI_State.TargetUsername = ""
+        UI_State.TargetUserId = nil
+        Alert("Target player cleared.", "Warning")
+        return
+    end
+    UI_State.TargetUsername = username
+    task.spawn(function()
+        local success, id = pcall(function()
+            return Players:GetUserIdFromNameAsync(username)
+        end)
+        if success and id then
+            UI_State.TargetUserId = id
+            Alert("Target set: " .. username .. " (ID: " .. tostring(id) .. ")", "Success")
+        else
+            UI_State.TargetUserId = nil
+            Alert("Could not find user: " .. username, "Error")
+        end
+    end)
+end
+-- // UI — Flood GUI v4 style (black/red Kavo + mobile) //
+local UserInputService = game:GetService("UserInputService")
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+local KAVO_THEME = {
+    SchemeColor = Color3.fromRGB(180, 20, 30),   -- red accent (V4)
+    Background = Color3.fromRGB(12, 12, 12),     -- near black
+    Header = Color3.fromRGB(8, 8, 8),            -- deeper black
+    TextColor = Color3.fromRGB(245, 245, 245),
+    ElementColor = Color3.fromRGB(28, 28, 28)
+}
+
+local function loadKavo()
+    local urls = {
+        "https://github.com/tomatotxt/Kavo-UI-Library/raw/refs/heads/main/source.lua", -- V4
+        "https://raw.githubusercontent.com/tomatotxt/code/refs/heads/main/kavomobile.luau", -- mobile
+        "https://raw.githubusercontent.com/4phi/Kavo-UI-Library/refs/heads/main/source.lua",
+        "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua",
+    }
+    for _, url in ipairs(urls) do
+        local ok, src = pcall(function() return game:HttpGet(url) end)
+        if ok and type(src) == "string" and #src > 100 then
+            local ok2, lib = pcall(function() return loadstring(src)() end)
+            if ok2 and type(lib) == "table" and lib.CreateLib then
+                print("[fe2_troll] Kavo loaded:", url)
+                return lib
+            end
+        end
+    end
+    return nil
+end
+
+local Library = loadKavo()
+if not Library then
+    error("[fe2_troll] Failed to load Kavo UI library")
+end
+
+local Window
+do
+    local ok, win = pcall(function()
+        return Library.CreateLib("FE2 Troll", KAVO_THEME)
+    end)
+    if ok and win then
+        Window = win
+    else
+        ok, win = pcall(function()
+            return Library.CreateLib("FE2 Troll", "DarkTheme")
+        end)
+        if ok and win then
+            Window = win
+        else
+            Window = Library.CreateLib("FE2 Troll", KAVO_THEME)
+        end
+    end
+end
+
+local MainTab = Window:NewTab("Main")
+local AutomationTab = Window:NewTab("Automation")
+local MiscellaneousTab = Window:NewTab("Miscellaneous")
+local CreditsTab = Window:NewTab("Credits")
+local BoostSection = MainTab:NewSection("Boosts & Events")
+local TeleportSection = MainTab:NewSection("Teleports")
+local VotingSection = AutomationTab:NewSection("Voting")
+local VoteAutomatorSection = AutomationTab:NewSection("Vote Automator")
+local AutoJoinSection = AutomationTab:NewSection("Auto-Join")
+local FunSection = MiscellaneousTab:NewSection("Fun")
+local CreditsSection = CreditsTab:NewSection("Credits")
+BoostSection:NewToggle("Auto Boost (20 Gems)", "Automatically sends full boosts at round start", function(state)
+    UI_State.AutoBoost = state
+end)
+BoostSection:NewButton("Manual Full Boost (20 Gems)", "Sends one-time manual boost requests", function()
+    if BoostIntensity then
+        for i = 1, 4 do
+            task.spawn(function()
+                BoostIntensity:FireServer(5)
+            end)
+        end
+    end
+end)
+BoostSection:NewToggle("Auto Double Map Event (15 Gems)", "Automatically adds two events during voting", function(state)
+    UI_State.AutoEvent = state
+end)
+BoostSection:NewButton("Manual Double Map Event (15 Gems)", "Instantly adds 2 events", function()
+    if addMapEventRemote then
+        addMapEventRemote:FireServer()
+        addMapEventRemote:FireServer()
+    end
+end)
+TeleportSection:NewToggle("Auto TP to Secret Room", "Automatically teleports character upon spawn or load", function(state)
+    UI_State.AutoTeleport = state
+    if state and LocalPlayer.Character then
+        TeleportToSecretRoom(LocalPlayer.Character)
+    end
+end)
+TeleportSection:NewButton("Manual TP to Secret Room", "Teleports to safe area once", function()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local rootpart = char:FindFirstChild("HumanoidRootPart")
+    if rootpart then
+        rootpart.CFrame = SAFE_ROOM_CFRAME
+    end
+end)
+VotingSection:NewToggle("Auto Open Voting", "Opens voting remotely", function(state)
+    UI_State.AutoVoting = state
+    if state then
+        Alert("Auto Voting Enabled.", "Success")
+    else
+        Alert("Auto Voting Disabled.", "Info")
+        local isVotingEvent = GetIsVotingEvent()
+        if isVotingEvent then
+            isVotingEvent:Fire(false)
+        end
+    end
+end)
+local CoinCostLabel = VoteAutomatorSection:NewLabel("Estimated Coin Cost: " .. tostring(CalculateCoinCost(UI_State.CustomVoteTarget)) .. " Coins (" .. tostring(UI_State.CustomVoteTarget) .. " votes)")
+VoteAutomatorSection:NewTextBox("Target Vote Amount", "Enter desired vote count", function(text)
+    local num = tonumber(text)
+    if num and num > 0 then
+        UI_State.CustomVoteTarget = num
+        local cost = CalculateCoinCost(num)
+        CoinCostLabel:UpdateLabel("Estimated Coin Cost: " .. tostring(cost) .. " Coins (" .. tostring(num) .. " votes)")
+        Alert("Vote amount set to: " .. tostring(num) .. " (Cost: " .. tostring(cost) .. " coins)", "Success")
+    else
+        UI_State.CustomVoteTarget = 4
+        local cost = CalculateCoinCost(4)
+        CoinCostLabel:UpdateLabel("Estimated Coin Cost: " .. tostring(cost) .. " Coins (4 votes)")
+        Alert("Invalid number. Reset vote target to 4.", "Warning")
+    end
+end)
+VoteAutomatorSection:NewToggle("Custom Vote Amount", "Auto votes target vote amount", function(state)
+    UI_State.AutoFullVote = state
+    if state then
+        Alert("Custom Vote Amount Enabled (" .. tostring(UI_State.CustomVoteTarget) .. " votes).", "Success")
+    else
+        Alert("Custom Vote Amount Disabled.", "Info")
+    end
+end)
+AutoJoinSection:NewTextBox("Target Username", "Enter target player username and press Enter", function(text)
+    UpdateTargetUserId(text)
+end)
+AutoJoinSection:NewDropdown("Server Type", "Select Pro or Normal servers (Default = Pro)", {"Pro", "Normal"}, function(selected)
+    UI_State.SelectedPlaceType = selected
+    Alert("Server type set to: " .. selected, "Info")
+end)
+AutoJoinSection:NewToggle("Auto Teleport Request", "Fires teleport request on a four second loop", function(state)
+    UI_State.AutoReqTele = state
+    if state then
+        if UI_State.TargetUserId then
+            Alert("Auto Teleport Request Enabled.", "Success")
+        else
+            Alert("Auto Teleport Request Enabled, but no target username is set!", "Warning")
+        end
+    else
+        Alert("Auto Teleport Request Disabled.", "Info")
+    end
+end)
+FunSection:NewToggle("Elevator Jork Troll", "just read the title bro 😭", function(state)
+    UI_State.Jorking = state
+    if state then
+        startJorking()
+    else
+        stopJorking()
+    end
+end)
+local CREATOR_TAG = "rokfx on discord"
+local GITHUB_LINK = "https://github.com/4phi"
+CreditsSection:NewLabel("Creator: " .. CREATOR_TAG)
+CreditsSection:NewLabel("UI Theme: Flood GUI v4 (black/red)")
+CreditsSection:NewButton("Copy Discord Tag", "Copies creator name to clipboard", function()
+    if setclipboard then
+        setclipboard("rokfx")
+    end
+end)
+CreditsSection:NewLabel("Github: " .. GITHUB_LINK)
+CreditsSection:NewButton("Copy Github", "Copies link clipboard", function()
+    if setclipboard then
+        setclipboard(GITHUB_LINK)
+    end
+end)
+
+-- // MOBILE / UI //
+-- Kavo already has built-in drag — do NOT dragify every CoreGui frame (that broke dragging)
+pcall(function()
+    local misc = MiscellaneousTab:NewSection("Mobile / UI")
+    misc:NewKeybind("Toggle UI", "Show/Hide GUI", Enum.KeyCode.J, function()
+        if Library.ToggleUI then
+            Library.ToggleUI()
+        elseif Library.toggleUI then
+            Library.toggleUI()
+        end
+    end)
+    misc:NewButton("Hide UI", "Hide the Kavo window", function()
+        if Library.ToggleUI then
+            Library.ToggleUI()
+        elseif Library.toggleUI then
+            Library.toggleUI()
+        end
+    end)
+    if IS_MOBILE then
+        misc:NewLabel("Mobile: use Kavo title bar to drag")
+    end
+end)
+
+print("[fe2_troll] FE2 Troll loaded")
